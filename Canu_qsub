@@ -1,0 +1,52 @@
+#!/bin/bash
+#$ -V
+#$ -cwd
+#$ -S /bin/bash
+#$ -N pilon
+#$ -o $JOB_NAME.o$JOB_ID
+#$ -e $JOB_NAME.e$JOB_ID
+#$ -q omni
+#$ -pe sm 36
+#$ -P quanah
+
+#This line defines the working directory.
+WORKDIR=/lustre/work/apruthi/canu/fly_polish
+
+#This line defines the directory from which the data will be collected.
+DATADIR=/lustre/work/apruthi/canu/data/fly
+
+#This line defines the path where the pilon software is located.
+PILON_PATH=/lustre/work/daray/software/pilon
+
+#This line defines the path where the software mummer is located.
+MUMMER_PATH=/lustre/work/daray/software/mummer-4.0.0beta2
+
+#This line helps us to run the software or anything we add in the $PATH from anywhere on our system without providing its location.
+export PATH=$PATH:$PILON_PATH:$MUMMER_PATH
+
+#This line loads all the softwares required to do the polishing of the assembly.
+module load intel bowtie2 samtools java/1.8.0
+
+#This line helps us go into the working directory defined above.
+cd $WORKDIR
+
+#This line will do the mapping using the bowtie2 using the fasta file and build a database named fly_nanopore.
+bowtie2-build fly_nanopore.contigs.fasta fly_nanopore
+
+#This line helps us run bowtie2 by declaring the database, that is fly_nanopore and assigning the number of processors that it can use by '-p' and also providing the data files and then create a bam file as output using the samtools. fly_nanopore.tmp is to store data for temporary basis.
+bowtie2 -x fly_nanopore -p 36 \
+        -1 $DATADIR/SRR6425993_1.fastq.gz \
+        -2 $DATADIR/SRR6425993_2.fastq.gz \
+        | samtools sort -o fly_illumina.sorted.bam -T fly_nanopore.tmp -
+
+#This line helps with the manipulation of alignment in the BAM format and index is used to limit samtools view.
+samtools index fly_illumina.sorted.bam
+
+#This line tells the program to start with 64 GB of memory and then use a Java archive file (jar) which is a zip file format and is used for aggregating many files into one.
+java -Xmx64G -jar $PILON_PATH/pilon-1.23.jar \
+        --genome fly_nanopore.contigs.fasta \
+        --frags fly_illumina.sorted.bam \
+        --output fly_polished \
+        --outdir . \
+        --vcf \
+        --threads 36
